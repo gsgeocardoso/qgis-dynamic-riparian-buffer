@@ -1,4 +1,5 @@
 # QGIS APP Dinâmica / Dynamic Riparian Buffer
+Ferramenta para QGIS que gera APP automaticamente com base na largura do rio conforme o Código Florestal brasileiro — QGIS tool for automatic delineation of Permanent Preservation Areas (APP – legally protected riparian buffer zones in Brazil) based on river width.
 
 ## Contexto e Motivação / Context and Motivation
 
@@ -99,21 +100,47 @@ This tool calculates river width from two bank lines, generates the centerline, 
 
 **PORTUGUÊS**
 
-* Margens do rio
-* Campo ID
-* Distância de amostragem
-* Tolerância para mudança de APP
-* Dissolver todas as APPs
-* Remover sobreposição
+- **Margens do rio**  
+  Camada de linhas contendo as duas margens de cada rio.
+
+- **Campo ID**  
+  Campo utilizado para identificar cada rio. As duas margens devem possuir o mesmo valor.
+
+- **Distância de amostragem**  
+  Intervalo (em metros) utilizado para medir a largura do rio ao longo do seu percurso.  
+  Valores menores geram maior precisão, porém aumentam o tempo de processamento.
+
+- **Tolerância para mudança de APP (m)**  
+  Define a sensibilidade para alteração da faixa de APP ao longo do rio.  
+  Valores maiores evitam mudanças frequentes causadas por pequenas variações de largura.
+
+- **Dissolver todas as APPs**  
+  Quando ativado, todas as APPs geradas são unificadas em um único polígono.
+
+- **Remover sobreposição**  
+  Remove áreas sobrepostas entre APPs, mantendo apenas a maior faixa conforme a hierarquia de largura.
 
 **ENGLISH**
 
-* River banks
-* ID field
-* Sampling distance
-* APP change tolerance
-* Dissolve all APPs
-* Remove overlap
+- **River banks**  
+  Line layer containing the two banks of each river.
+
+- **ID field**  
+  Field used to identify each river. Both banks must share the same value.
+
+- **Sampling distance**  
+  Interval (in meters) used to measure river width along its course.  
+  Smaller values increase precision but also processing time.
+
+- **APP change tolerance (m)**  
+  Controls sensitivity to changes in buffer width along the river.  
+  Higher values reduce frequent changes caused by small width variations.
+
+- **Dissolve all APPs**  
+  When enabled, all generated buffers are merged into a single polygon.
+
+- **Remove overlap**  
+  Removes overlapping areas between buffers, keeping only the largest one based on width hierarchy.
 
 ---
 
@@ -137,21 +164,53 @@ This tool calculates river width from two bank lines, generates the centerline, 
 
 **PORTUGUÊS**
 
-1. Amostragem ao longo de uma das margens
-2. Cálculo da distância até a margem oposta
-3. Geração do eixo central
-4. Classificação da largura conforme o Código Florestal
-5. Geração de buffers nas margens
-6. Construção de geometria contínua da APP utilizando operações espaciais robustas
+A ferramenta segue um fluxo automatizado para representar de forma mais fiel a variação da largura do rio ao longo do seu percurso:
+
+1. **Amostragem ao longo de uma margem**  
+   Pontos são gerados em intervalos regulares ao longo de uma das margens do rio.
+
+2. **Cálculo da largura do rio**  
+   Para cada ponto, é calculada a menor distância até a margem oposta, representando a largura local do rio.
+
+3. **Geração do eixo central**  
+   O eixo do rio é obtido a partir do ponto médio entre as duas margens ao longo do percurso.
+
+4. **Classificação da APP**  
+   A largura do rio é classificada conforme as regras do Código Florestal Brasileiro, definindo a faixa de APP correspondente.
+
+5. **Segmentação ao longo do rio**  
+   O rio é dividido em trechos homogêneos conforme a largura e a tolerância definida, evitando variações excessivas na APP.
+
+6. **Geração dos buffers nas margens**  
+   Buffers são aplicados individualmente em cada margem para cada trecho.
+
+7. **Construção da geometria contínua da APP**  
+   As áreas entre as margens são preenchidas e unificadas com os buffers, garantindo uma APP contínua e sem lacunas, mesmo em rios largos.
 
 **ENGLISH**
 
-1. Sampling along one river bank
-2. Distance calculation to the opposite bank
-3. Centerline generation
-4. Width classification according to the Brazilian Forest Code
-5. Buffer generation along river banks
-6. Construction of continuous APP geometry using robust spatial operations
+The tool follows an automated workflow to accurately represent river width variation along its course:
+
+1. **Sampling along one river bank**  
+   Points are generated at regular intervals along one of the river banks.
+
+2. **River width calculation**  
+   For each point, the shortest distance to the opposite bank is calculated, representing local river width.
+
+3. **Centerline generation**  
+   The river centerline is derived from the midpoint between both banks along the course.
+
+4. **APP classification**  
+   River width is classified according to the Brazilian Forest Code, defining the corresponding buffer distance.
+
+5. **Segmentation along the river**  
+   The river is divided into homogeneous segments based on width and tolerance, avoiding excessive APP variation.
+
+6. **Buffer generation along river banks**  
+   Buffers are applied individually to each bank for each segment.
+
+7. **Continuous APP geometry construction**  
+   The space between banks is filled and merged with buffers, ensuring a continuous and gap-free APP, even for wide rivers.
 
 ---
 
@@ -171,15 +230,23 @@ This tool calculates river width from two bank lines, generates the centerline, 
 
 **PORTUGUÊS**
 
-* QGIS 3.x
+* QGIS 3.x ou superior
 * Python
-* Bibliotecas: numpy, shapely
+* Bibliotecas:
+  * numpy
+  * shapely (necessário para operações geométricas avançadas)
+
+Observação: a biblioteca `shapely` pode não estar disponível por padrão em algumas instalações do QGIS (especialmente via OSGeo4W), sendo necessária instalação manual.
 
 **ENGLISH**
 
-* QGIS 3.x
+* QGIS 3.x or higher
 * Python
-* Libraries: numpy, shapely
+* Libraries:
+  * numpy
+  * shapely (required for advanced geometric operations)
+
+Note: the `shapely` library may not be available by default in some QGIS installations (especially via OSGeo4W) and may require manual installation.
 
 ---
 
@@ -192,20 +259,19 @@ This tool calculates river width from two bank lines, generates the centerline, 
 
 ![Abrir Processing Toolbox](images/tutorial_01.png)
 
-4. Na caixa de ferramentas, adicione o Script
+3. Na caixa de ferramentas, adicione o script
 
-![Abrir Processing Toolbox](images/tutorial_02.png)
-![Abrir Processing Toolbox](images/tutorial_03.png)
-![Abrir Processing Toolbox](images/tutorial_04_05.png)
+![Adicionar script](images/tutorial_02.png)
+![Adicionar script](images/tutorial_03.png)
+![Adicionar script](images/tutorial_04_05.png)
 
-5. Execute a ferramenta "APP Dinâmica"
+4. Execute a ferramenta "APP Dinâmica"
 
-![Abrir Processing Toolbox](images/tutorial_09.png)
+![Executar ferramenta](images/tutorial_09.png)
 
+5. Configure os parâmetros e execute
 
-7. Configure os parâmetros e execute
-
-![Abrir Processing Toolbox](images/tutorial_07.png)
+![Parâmetros](images/tutorial_07.png)
 
 **ENGLISH**
 
