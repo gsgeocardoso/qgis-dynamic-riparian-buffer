@@ -87,39 +87,39 @@ https://www.linkedin.com/in/gscardoso-bio
 
         self.addParameter(QgsProcessingParameterFeatureSource(
             self.INPUT,
-            'Margens do rio',
+            'Margens do rio / River banks',
             [QgsProcessing.TypeVectorLine]
         ))
 
         self.addParameter(QgsProcessingParameterString(
             self.FIELD_ID,
-            'Campo ID',
+            'Campo ID / ID field',
             defaultValue='id_arroio'
         ))
 
         self.addParameter(QgsProcessingParameterNumber(
             self.DIST,
-            'Distância de amostragem',
+            'Distância de amostragem / Sampling distance',
             type=QgsProcessingParameterNumber.Double,
             defaultValue=2
         ))
 
         self.addParameter(QgsProcessingParameterNumber(
             self.TOL,
-            'Tolerância',
+            'Tolerância / APP change tolerance (m)',
             type=QgsProcessingParameterNumber.Double,
             defaultValue=0
         ))
 
         self.addParameter(QgsProcessingParameterBoolean(
             self.DISSOLVE_GENERAL,
-            'Dissolver tudo',
+            'Dissolver tudo / Dissolve all APPs',
             defaultValue=False
         ))
 
         self.addParameter(QgsProcessingParameterBoolean(
             self.REMOVE_OVERLAP,
-            'Remover sobreposição',
+            'Remover sobreposição / Remove overlap',
             defaultValue=False
         ))
 
