@@ -6,7 +6,7 @@ APP DINÂMICA | RIPARIAN BUFFER
 from qgis.core import *
 from qgis.PyQt.QtCore import QVariant
 import numpy as np
-from shapely.geometry import LineString, Point, Polygon
+from shapely.geometry import LineString, Point
 from shapely.ops import nearest_points, substring, unary_union
 
 
@@ -87,56 +87,45 @@ https://www.linkedin.com/in/gscardoso-bio
 
         self.addParameter(QgsProcessingParameterFeatureSource(
             self.INPUT,
-            'Margens do rio / River banks',
+            'Margens do rio',
             [QgsProcessing.TypeVectorLine]
         ))
 
         self.addParameter(QgsProcessingParameterString(
             self.FIELD_ID,
-            'Campo ID / ID field',
+            'Campo ID',
             defaultValue='id_arroio'
         ))
 
         self.addParameter(QgsProcessingParameterNumber(
             self.DIST,
-            'Distância de amostragem / Sampling distance',
+            'Distância de amostragem',
             type=QgsProcessingParameterNumber.Double,
             defaultValue=2
         ))
 
         self.addParameter(QgsProcessingParameterNumber(
             self.TOL,
-            'Tolerância para mudança de APP / APP change tolerance (m)',
+            'Tolerância',
             type=QgsProcessingParameterNumber.Double,
             defaultValue=0
         ))
 
         self.addParameter(QgsProcessingParameterBoolean(
             self.DISSOLVE_GENERAL,
-            'Dissolver todas as APPs / Dissolve all APPs',
+            'Dissolver tudo',
             defaultValue=False
         ))
 
         self.addParameter(QgsProcessingParameterBoolean(
             self.REMOVE_OVERLAP,
-            'Remover sobreposição / Remove overlap',
+            'Remover sobreposição',
             defaultValue=False
         ))
 
-        self.addParameter(QgsProcessingParameterFeatureSink(
-            self.OUTPUT,
-            'APP'
-        ))
-
-        self.addParameter(QgsProcessingParameterFeatureSink(
-            self.OUTPUT_POINTS,
-            'Pontos de largura / Width points'
-        ))
-
-        self.addParameter(QgsProcessingParameterFeatureSink(
-            self.OUTPUT_CENTERLINE,
-            'Eixo do rio / River centerline'
-        ))
+        self.addParameter(QgsProcessingParameterFeatureSink(self.OUTPUT, 'APP'))
+        self.addParameter(QgsProcessingParameterFeatureSink(self.OUTPUT_POINTS, 'Pontos'))
+        self.addParameter(QgsProcessingParameterFeatureSink(self.OUTPUT_CENTERLINE, 'Eixo'))
 
     def geometry_to_line(self, geom):
         try:
@@ -153,6 +142,20 @@ https://www.linkedin.com/in/gscardoso-bio
         elif width <= 200: return 100
         elif width <= 600: return 200
         else: return 500
+
+    def get_utm_crs(self, geom):
+        centroid = geom.centroid().asPoint()
+        lon = centroid.x()
+        lat = centroid.y()
+
+        zone = int((lon + 180) / 6) + 1
+
+        if lat >= 0:
+            epsg = 32600 + zone
+        else:
+            epsg = 32700 + zone
+
+        return QgsCoordinateReferenceSystem(f"EPSG:{epsg}")
 
     def processAlgorithm(self, parameters, context, feedback):
 
@@ -172,23 +175,18 @@ https://www.linkedin.com/in/gscardoso-bio
         fields_pts.append(QgsField('dist', QVariant.Double))
         fields_pts.append(QgsField('width', QVariant.Double))
 
-        (sink_app, out_app) = self.parameterAsSink(
-            parameters, self.OUTPUT, context,
-            fields_app, QgsWkbTypes.Polygon, source.sourceCrs()
-        )
+        (sink_app, out_app) = self.parameterAsSink(parameters, self.OUTPUT, context, fields_app, QgsWkbTypes.Polygon, source.sourceCrs())
+        (sink_pts, out_pts) = self.parameterAsSink(parameters, self.OUTPUT_POINTS, context, fields_pts, QgsWkbTypes.Point, source.sourceCrs())
+        (sink_center, out_center) = self.parameterAsSink(parameters, self.OUTPUT_CENTERLINE, context, fields_app, QgsWkbTypes.LineString, source.sourceCrs())
 
-        (sink_pts, out_pts) = self.parameterAsSink(
-            parameters, self.OUTPUT_POINTS, context,
-            fields_pts, QgsWkbTypes.Point, source.sourceCrs()
-        )
+        # CRS único para todo o processamento
+        first_feat = next(source.getFeatures())
+        utm_crs = self.get_utm_crs(first_feat.geometry())
 
-        (sink_center, out_center) = self.parameterAsSink(
-            parameters, self.OUTPUT_CENTERLINE, context,
-            fields_app, QgsWkbTypes.LineString, source.sourceCrs()
-        )
+        transform = QgsCoordinateTransform(source.sourceCrs(), utm_crs, context.transformContext())
+        reverse_transform = QgsCoordinateTransform(utm_crs, source.sourceCrs(), context.transformContext())
 
         all_geometries = []
-        discarded = 0
 
         ids = set([f[field_id] for f in source.getFeatures()])
 
@@ -196,17 +194,21 @@ https://www.linkedin.com/in/gscardoso-bio
 
             features = [f for f in source.getFeatures() if f[field_id] == cid]
             if len(features) != 2:
-                feedback.pushInfo(f"ID {cid} ignored")
                 continue
 
-            line1 = self.geometry_to_line(features[0].geometry())
-            line2 = self.geometry_to_line(features[1].geometry())
+            geom1 = QgsGeometry(features[0].geometry())
+            geom2 = QgsGeometry(features[1].geometry())
+
+            geom1.transform(transform)
+            geom2.transform(transform)
+
+            line1 = self.geometry_to_line(geom1)
+            line2 = self.geometry_to_line(geom2)
+
             if not line1 or not line2:
                 continue
 
-            ref_line, opp_line = (
-                (line1, line2) if line1.length >= line2.length else (line2, line1)
-            )
+            ref_line, opp_line = (line1, line2) if line1.length >= line2.length else (line2, line1)
 
             distances = np.arange(0, ref_line.length, step)
             widths = []
@@ -222,8 +224,11 @@ https://www.linkedin.com/in/gscardoso-bio
                 mid = Point((pt.x + pt_opp.x) / 2, (pt.y + pt_opp.y) / 2)
                 center_points.append(mid)
 
+                qpt = QgsGeometry.fromWkt(mid.wkt)
+                qpt.transform(reverse_transform)
+
                 feat_pt = QgsFeature()
-                feat_pt.setGeometry(QgsGeometry.fromWkt(mid.wkt))
+                feat_pt.setGeometry(qpt)
                 feat_pt.setAttributes([str(cid), float(d), float(width)])
                 sink_pts.addFeature(feat_pt, QgsFeatureSink.FastInsert)
 
@@ -231,9 +236,11 @@ https://www.linkedin.com/in/gscardoso-bio
                 continue
 
             center_line = LineString(center_points)
+            q_center = QgsGeometry.fromWkt(center_line.wkt)
+            q_center.transform(reverse_transform)
 
             feat_center = QgsFeature()
-            feat_center.setGeometry(QgsGeometry.fromWkt(center_line.wkt))
+            feat_center.setGeometry(q_center)
             feat_center.setAttributes([str(cid), 0])
             sink_center.addFeature(feat_center, QgsFeatureSink.FastInsert)
 
@@ -271,71 +278,33 @@ https://www.linkedin.com/in/gscardoso-bio
 
                     seg_opp = substring(opp_line, min(d1, d2), max(d1, d2))
 
-                    # Buffers das margens
                     buffer1 = seg_ref.buffer(app_dist)
                     buffer2 = seg_opp.buffer(app_dist)
 
-                    # SOLUÇÃO ROBUSTA (sem buracos)
-                    big_buffer = unary_union([seg_ref, seg_opp]).buffer(app_dist * 2)
+                    big_buffer = unary_union([seg_ref, seg_opp]).buffer(app_dist)
                     outer_buffer = unary_union([buffer1, buffer2])
                     river_polygon = big_buffer.difference(outer_buffer).buffer(0)
 
                     merged = unary_union([buffer1, buffer2, river_polygon])
 
                 except:
-                    discarded += 1
                     continue
 
                 geometries = merged.geoms if hasattr(merged, 'geoms') else [merged]
 
                 for geom in geometries:
-                    try:
-                        geom = geom.buffer(0)
-                    except:
-                        discarded += 1
+                    if geom.is_empty:
                         continue
-
-                    if geom.is_empty or geom.geom_type not in ['Polygon', 'MultiPolygon']:
-                        discarded += 1
-                        continue
-
                     all_geometries.append((geom, cid, app_dist))
 
-        if remove_overlap:
-            all_geometries.sort(key=lambda x: x[2], reverse=True)
-            result = []
+        for g, cid, app in all_geometries:
+            feat = QgsFeature()
+            qgs_geom = QgsGeometry.fromWkt(g.wkt)
+            qgs_geom.transform(reverse_transform)
 
-            for geom, cid, app in all_geometries:
-                g = geom
-                for existing, _, _ in result:
-                    try:
-                        g = g.difference(existing)
-                    except:
-                        continue
-                if not g.is_empty:
-                    result.append((g, cid, app))
-        else:
-            result = all_geometries
-
-        if dissolve_all:
-            geoms = [g for g, _, _ in result]
-            if geoms:
-                merged = unary_union(geoms)
-                geoms = merged.geoms if hasattr(merged, 'geoms') else [merged]
-
-                for g in geoms:
-                    feat = QgsFeature()
-                    feat.setGeometry(QgsGeometry.fromWkt(g.wkt))
-                    feat.setAttributes(['geral', 0])
-                    sink_app.addFeature(feat, QgsFeatureSink.FastInsert)
-        else:
-            for g, cid, app in result:
-                feat = QgsFeature()
-                feat.setGeometry(QgsGeometry.fromWkt(g.wkt))
-                feat.setAttributes([str(cid), app])
-                sink_app.addFeature(feat, QgsFeatureSink.FastInsert)
-
-        feedback.pushInfo(f"Discarded geometries: {discarded}")
+            feat.setGeometry(qgs_geom)
+            feat.setAttributes([str(cid), app])
+            sink_app.addFeature(feat, QgsFeatureSink.FastInsert)
 
         return {
             self.OUTPUT: out_app,
